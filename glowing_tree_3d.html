@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>發光樹木 - Three.js</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(180deg, #000011 0%, #001122 50%, #000033 100%);
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
+        
+        #controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 20, 40, 0.8);
+            padding: 20px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(100, 200, 255, 0.3);
+            z-index: 100;
+            max-width: 300px;
+        }
+        
+        .control-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            color: #88ccff;
+            font-size: 12px;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            background: rgba(136, 204, 255, 0.2);
+            outline: none;
+            border-radius: 3px;
+            -webkit-appearance: none;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #00ccff;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(0, 204, 255, 0.5);
+        }
+        
+        .value-display {
+            color: #ffffff;
+            font-size: 11px;
+            text-align: right;
+            margin-top: 2px;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #0066cc, #0099ff);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.3s;
+            margin-top: 10px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0, 153, 255, 0.4);
+        }
+        
+        #info {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            text-align: right;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <div class="control-group">
+            <label for="treeHeight">樹木高度</label>
+            <input type="range" id="treeHeight" min="3" max="15" value="8" step="0.5">
+            <div class="value-display" id="treeHeightValue">8</div>
+        </div>
+        
+        <div class="control-group">
+            <label for="branchDensity">分支密度</label>
+            <input type="range" id="branchDensity" min="0.3" max="1.5" value="0.8" step="0.1">
+            <div class="value-display" id="branchDensityValue">0.8</div>
+        </div>
+        
+        <div class="control-group">
+            <label for="leafDensity">葉片密度</label>
+            <input type="range" id="leafDensity" min="0.5" max="2.0" value="1.0" step="0.1">
+            <div class="value-display" id="leafDensityValue">1.0</div>
+        </div>
+        
+        <div class="control-group">
+            <label for="glowIntensity">發光強度</label>
+            <input type="range" id="glowIntensity" min="0.2" max="3.0" value="1.5" step="0.1">
+            <div class="value-display" id="glowIntensityValue">1.5</div>
+        </div>
+        
+        <div class="control-group">
+            <label for="animationSpeed">動畫速度</label>
+            <input type="range" id="animationSpeed" min="0.1" max="2.0" value="1.0" step="0.1">
+            <div class="value-display" id="animationSpeedValue">1.0</div>
+        </div>
+        
+        <button onclick="regenerateTree()">重新生成樹木</button>
+    </div>
+    
+    <div id="info">
+        <div>拖曳滑鼠旋轉視角</div>
+        <div>滾輪縮放</div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer, tree, controls;
+        let treeParams = {
+            height: 8,
+            branchDensity: 0.8,
+            leafDensity: 1.0,
+            glowIntensity: 1.5,
+            animationSpeed: 1.0
+        };
+
+        class TreeGenerator {
+            constructor() {
+                this.branches = [];
+                this.leaves = [];
+                this.glowPoints = [];
+            }
+
+            generateTree(params) {
+                this.branches = [];
+                this.leaves = [];
+                this.glowPoints = [];
+                
+                // 生成主幹和分支
+                this.generateBranch({
+                    startPos: new THREE.Vector3(0, 0, 0),
+                    direction: new THREE.Vector3(0, 1, 0),
+                    length: params.height,
+                    thickness: 0.3,
+                    depth: 0,
+                    maxDepth: Math.floor(4 * params.branchDensity)
+                });
+
+                return this.createTreeMesh();
+            }
+
+            generateBranch(config) {
+                const { startPos, direction, length, thickness, depth, maxDepth } = config;
+                
+                if (depth > maxDepth || length < 0.8) return;
+
+                // 添加更多曲線和隨機性，像珊瑚一樣
+                const curvature = 0.3 + Math.random() * 0.4;
+                const segments = Math.floor(length * 3) + 2;
+                
+                let currentPos = startPos.clone();
+                let currentDir = direction.clone();
+                
+                for (let i = 0; i < segments; i++) {
+                    const t = i / segments;
+                    const segmentLength = length / segments;
+                    
+                    // 添加隨機彎曲
+                    const randomBend = new THREE.Vector3(
+                        (Math.random() - 0.5) * curvature,
+                        Math.random() * 0.2,
+                        (Math.random() - 0.5) * curvature
+                    );
+                    currentDir.add(randomBend).normalize();
+                    
+                    const nextPos = currentPos.clone().add(currentDir.clone().multiplyScalar(segmentLength));
+                    
+                    // 創建更有機的分支形狀
+                    const segmentThickness = thickness * (1 - t * 0.5) * (0.8 + Math.random() * 0.4);
+                    
+                    this.branches.push({
+                        start: currentPos.clone(),
+                        end: nextPos.clone(),
+                        thickness: segmentThickness,
+                        color: this.generateCoralColor(depth, t)
+                    });
+                    
+                    currentPos = nextPos;
+                }
+
+                // 在分支上添加更多彩色發光點
+                const numGlowPoints = Math.floor(length * 4 + Math.random() * 8);
+                for (let i = 0; i < numGlowPoints; i++) {
+                    const t = Math.random();
+                    const pos = startPos.clone().lerp(currentPos, t);
+                    
+                    // 添加更大的隨機偏移，像珊瑚的分叉
+                    pos.add(new THREE.Vector3(
+                        (Math.random() - 0.5) * thickness * 3,
+                        (Math.random() - 0.5) * thickness,
+                        (Math.random() - 0.5) * thickness * 3
+                    ));
+                    
+                    this.glowPoints.push({
+                        position: pos,
+                        color: this.generateGlowColor(),
+                        size: 0.08 + Math.random() * 0.15
+                    });
+                }
+
+                // 生成更多不規則的子分支，像珊瑚的觸手
+                if (depth < maxDepth && Math.random() < 0.8) {
+                    const numSubBranches = depth === 0 ? 4 + Math.floor(Math.random() * 3) : 2 + Math.floor(Math.random() * 4);
+                    
+                    for (let i = 0; i < numSubBranches; i++) {
+                        const branchPoint = 0.3 + Math.random() * 0.6;
+                        const branchStart = startPos.clone().lerp(currentPos, branchPoint);
+                        
+                        // 更激進的分支角度
+                        const angle = Math.random() * Math.PI * 2;
+                        const upAngle = Math.PI * 0.1 + Math.random() * Math.PI * 0.6;
+                        
+                        const newDirection = new THREE.Vector3(
+                            Math.cos(angle) * Math.sin(upAngle),
+                            Math.cos(upAngle) * (0.5 + Math.random() * 0.5),
+                            Math.sin(angle) * Math.sin(upAngle)
+                        ).normalize();
+
+                        // 添加螺旋扭曲
+                        const twist = Math.sin(depth * 0.5) * 0.3;
+                        newDirection.applyAxisAngle(new THREE.Vector3(0, 1, 0), twist);
+
+                        this.generateBranch({
+                            startPos: branchStart,
+                            direction: newDirection,
+                            length: length * (0.4 + Math.random() * 0.4),
+                            thickness: thickness * (0.5 + Math.random() * 0.3),
+                            depth: depth + 1,
+                            maxDepth: maxDepth
+                        });
+                    }
+                }
+
+                // 在末端添加珊瑚狀的裝飾
+                if (depth >= maxDepth - 2) {
+                    this.generateCoralTips(currentPos, thickness * 2);
+                }
+            }
+
+            generateCoralColor(depth, t) {
+                // 創建彩虹漸層色彩
+                const hue = (depth * 0.15 + t * 0.3 + Math.random() * 0.2) % 1;
+                const saturation = 0.7 + Math.random() * 0.3;
+                const lightness = 0.4 + Math.random() * 0.3;
+                return new THREE.Color().setHSL(hue, saturation, lightness);
+            }
+
+            generateGlowColor() {
+                // 更豐富的發光色彩
+                const colorPalette = [
+                    new THREE.Color(0xff6b9d), // 粉紅
+                    new THREE.Color(0x6bb6ff), // 天藍
+                    new THREE.Color(0x9d6bff), // 紫色
+                    new THREE.Color(0x6bff9d), // 青綠
+                    new THREE.Color(0xffb66b), // 橘色
+                    new THREE.Color(0xff6bb6), // 桃紅
+                    new THREE.Color(0xb6ff6b), // 檸檬綠
+                    new THREE.Color(0x6bffff)  // 青色
+                ];
+                return colorPalette[Math.floor(Math.random() * colorPalette.length)];
+            }
+
+            generateCoralTips(position, radius) {
+                const numTips = Math.floor(8 * treeParams.leafDensity + Math.random() * 12);
+                
+                for (let i = 0; i < numTips; i++) {
+                    const angle1 = Math.random() * Math.PI * 2;
+                    const angle2 = Math.random() * Math.PI;
+                    
+                    const tipPos = position.clone().add(new THREE.Vector3(
+                        Math.cos(angle1) * Math.sin(angle2) * radius,
+                        Math.cos(angle2) * radius * 0.5,
+                        Math.sin(angle1) * Math.sin(angle2) * radius
+                    ));
+                    
+                    this.leaves.push({
+                        position: tipPos,
+                        size: 0.15 + Math.random() * 0.25,
+                        rotation: Math.random() * Math.PI * 2,
+                        color: this.generateCoralColor(Math.random() * 5, Math.random())
+                    });
+                }
+            }
+
+            createTreeMesh() {
+                const treeGroup = new THREE.Group();
+
+                // 創建彩色分支
+                this.branches.forEach(branch => {
+                    const branchGeometry = new THREE.CylinderGeometry(
+                        branch.thickness * 0.7, 
+                        branch.thickness, 
+                        branch.start.distanceTo(branch.end), 
+                        8
+                    );
+                    
+                    // 使用珊瑚色彩的材質
+                    const branchMaterial = new THREE.MeshPhongMaterial({
+                        color: branch.color || new THREE.Color(0xff6b9d),
+                        emissive: branch.color ? branch.color.clone().multiplyScalar(0.2) : new THREE.Color(0x331122),
+                        shininess: 30,
+                        transparent: true,
+                        opacity: 0.9
+                    });
+
+                    const branchMesh = new THREE.Mesh(branchGeometry, branchMaterial);
+                    
+                    // 定位分支
+                    const midPoint = branch.start.clone().lerp(branch.end, 0.5);
+                    const direction = branch.end.clone().sub(branch.start).normalize();
+                    
+                    branchMesh.position.copy(midPoint);
+                    branchMesh.lookAt(midPoint.clone().add(direction));
+                    branchMesh.rotateX(Math.PI / 2);
+                    
+                    // 添加隨機扭曲
+                    branchMesh.rotation.z += (Math.random() - 0.5) * 0.3;
+                    
+                    treeGroup.add(branchMesh);
+                });
+
+                // 創建彩色珊瑚尖端
+                this.leaves.forEach(leaf => {
+                    // 使用球體替代平面，更像珊瑚
+                    const leafGeometry = new THREE.SphereGeometry(leaf.size, 8, 6);
+                    
+                    const leafMaterial = new THREE.MeshPhongMaterial({
+                        color: leaf.color || this.generateCoralColor(Math.random() * 5, Math.random()),
+                        emissive: leaf.color ? leaf.color.clone().multiplyScalar(0.3) : new THREE.Color(0x442211),
+                        transparent: true,
+                        opacity: 0.8,
+                        shininess: 50
+                    });
+
+                    const leafMesh = new THREE.Mesh(leafGeometry, leafMaterial);
+                    leafMesh.position.copy(leaf.position);
+                    
+                    // 添加一些隨機變形
+                    leafMesh.scale.set(
+                        1 + (Math.random() - 0.5) * 0.4,
+                        1 + (Math.random() - 0.5) * 0.4,
+                        1 + (Math.random() - 0.5) * 0.4
+                    );
+
+                    treeGroup.add(leafMesh);
+                });
+
+                // 創建彩色發光粒子
+                const glowGeometry = new THREE.BufferGeometry();
+                const glowPositions = [];
+                const glowColors = [];
+                const glowSizes = [];
+
+                this.glowPoints.forEach(point => {
+                    glowPositions.push(point.position.x, point.position.y, point.position.z);
+                    glowColors.push(point.color.r, point.color.g, point.color.b);
+                    glowSizes.push(point.size);
+                });
+
+                glowGeometry.setAttribute('position', new THREE.Float32BufferAttribute(glowPositions, 3));
+                glowGeometry.setAttribute('color', new THREE.Float32BufferAttribute(glowColors, 3));
+                glowGeometry.setAttribute('size', new THREE.Float32BufferAttribute(glowSizes, 1));
+
+                const glowMaterial = new THREE.ShaderMaterial({
+                    uniforms: {
+                        time: { value: 0 }
+                    },
+                    vertexShader: `
+                        attribute float size;
+                        varying vec3 vColor;
+                        uniform float time;
+                        
+                        void main() {
+                            vColor = color;
+                            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                            
+                            float pulsing = 0.8 + 0.3 * sin(time * 3.0 + position.x * 10.0 + position.z * 10.0);
+                            gl_PointSize = size * 300.0 * pulsing / -mvPosition.z;
+                            gl_Position = projectionMatrix * mvPosition;
+                        }
+                    `,
+                    fragmentShader: `
+                        varying vec3 vColor;
+                        
+                        void main() {
+                            float distance = length(gl_PointCoord - vec2(0.5));
+                            if (distance > 0.5) discard;
+                            
+                            float alpha = 1.0 - distance * 2.0;
+                            alpha = alpha * alpha;
+                            
+                            gl_FragColor = vec4(vColor, alpha);
+                        }
+                    `,
+                    vertexColors: true,
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false
+                });
+
+                const glowPoints = new THREE.Points(glowGeometry, glowMaterial);
+                glowPoints.userData = { isGlowPoints: true };
+                treeGroup.add(glowPoints);
+
+                // 添加環境光暈效果
+                const ambientGlowGeometry = new THREE.SphereGeometry(15, 32, 32);
+                const ambientGlowMaterial = new THREE.MeshBasicMaterial({
+                    color: 0x6699ff,
+                    transparent: true,
+                    opacity: 0.05,
+                    side: THREE.BackSide
+                });
+                const ambientGlow = new THREE.Mesh(ambientGlowGeometry, ambientGlowMaterial);
+                treeGroup.add(ambientGlow);
+
+                return treeGroup;
+            }
+        }
+
+        function init() {
+            // 創建場景
+            scene = new THREE.Scene();
+            scene.fog = new THREE.Fog(0x000022, 10, 50);
+
+            // 創建相機
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(25, 15, 25);
+            camera.lookAt(0, 8, 0);
+
+            // 創建渲染器
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x000011, 1);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
+
+            // 添加燈光
+            const ambientLight = new THREE.AmbientLight(0x112244, 0.3);
+            scene.add(ambientLight);
+
+            const moonLight = new THREE.DirectionalLight(0x6699ff, 0.5);
+            moonLight.position.set(10, 20, 5);
+            moonLight.castShadow = true;
+            scene.add(moonLight);
+
+            // 添加地面
+            const groundGeometry = new THREE.PlaneGeometry(50, 50);
+            const groundMaterial = new THREE.MeshLambertMaterial({
+                color: 0x001122,
+                transparent: true,
+                opacity: 0.6
+            });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // 生成初始樹木
+            generateTree();
+
+            // 設置控制器
+            setupControls();
+
+            // 開始動畫循環
+            animate();
+        }
+
+        function generateTree() {
+            if (tree) {
+                scene.remove(tree);
+            }
+
+            const generator = new TreeGenerator();
+            tree = generator.generateTree(treeParams);
+            tree.castShadow = true;
+            scene.add(tree);
+        }
+
+        function setupControls() {
+            let isMouseDown = false;
+            let mouseX = 0;
+            let mouseY = 0;
+            let targetRotationX = 0;
+            let targetRotationY = 0;
+            let currentRotationX = 0;
+            let currentRotationY = 0;
+            
+            // 初始化相機距離
+            let cameraDistance = Math.sqrt(camera.position.x * camera.position.x + 
+                                          camera.position.y * camera.position.y + 
+                                          camera.position.z * camera.position.z);
+
+            renderer.domElement.addEventListener('mousedown', (e) => {
+                isMouseDown = true;
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+            });
+
+            renderer.domElement.addEventListener('mousemove', (e) => {
+                if (isMouseDown) {
+                    targetRotationY += (e.clientX - mouseX) * 0.01;
+                    targetRotationX += (e.clientY - mouseY) * 0.01;
+                    mouseX = e.clientX;
+                    mouseY = e.clientY;
+                }
+            });
+
+            renderer.domElement.addEventListener('mouseup', () => {
+                isMouseDown = false;
+            });
+
+            renderer.domElement.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                cameraDistance += e.deltaY * 0.05;
+                cameraDistance = Math.max(5, Math.min(100, cameraDistance)); // 限制距離範圍
+            });
+
+            // 平滑旋轉
+            function updateCamera() {
+                currentRotationX += (targetRotationX - currentRotationX) * 0.1;
+                currentRotationY += (targetRotationY - currentRotationY) * 0.1;
+
+                const radius = cameraDistance; // 使用新的距離變數
+                camera.position.x = Math.cos(currentRotationY) * Math.cos(currentRotationX) * radius;
+                camera.position.y = Math.sin(currentRotationX) * radius + 5;
+                camera.position.z = Math.sin(currentRotationY) * Math.cos(currentRotationX) * radius;
+                camera.lookAt(0, 5, 0);
+
+                requestAnimationFrame(updateCamera);
+            }
+            updateCamera();
+
+            // UI 控制器
+            document.getElementById('treeHeight').addEventListener('input', (e) => {
+                treeParams.height = parseFloat(e.target.value);
+                document.getElementById('treeHeightValue').textContent = e.target.value;
+                generateTree();
+            });
+
+            document.getElementById('branchDensity').addEventListener('input', (e) => {
+                treeParams.branchDensity = parseFloat(e.target.value);
+                document.getElementById('branchDensityValue').textContent = e.target.value;
+                generateTree();
+            });
+
+            document.getElementById('leafDensity').addEventListener('input', (e) => {
+                treeParams.leafDensity = parseFloat(e.target.value);
+                document.getElementById('leafDensityValue').textContent = e.target.value;
+                generateTree();
+            });
+
+            document.getElementById('glowIntensity').addEventListener('input', (e) => {
+                treeParams.glowIntensity = parseFloat(e.target.value);
+                document.getElementById('glowIntensityValue').textContent = e.target.value;
+            });
+
+            document.getElementById('animationSpeed').addEventListener('input', (e) => {
+                treeParams.animationSpeed = parseFloat(e.target.value);
+                document.getElementById('animationSpeedValue').textContent = e.target.value;
+            });
+        }
+
+        function regenerateTree() {
+            generateTree();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // 動畫效果
+            if (tree) {
+                const time = Date.now() * 0.001 * treeParams.animationSpeed;
+                
+                // 讓發光點閃爍
+                tree.children.forEach(child => {
+                    if (child instanceof THREE.Points) {
+                        child.material.opacity = 0.5 + Math.sin(time * 2) * 0.3 * treeParams.glowIntensity;
+                        child.material.size = 0.05 + Math.sin(time * 3) * 0.02 * treeParams.glowIntensity;
+                    }
+                    
+                    // 葉片輕微搖擺
+                    if (child instanceof THREE.Mesh && child.material.color && child.material.color.g > 0.5) {
+                        child.rotation.z += Math.sin(time + child.position.x) * 0.01;
+                    }
+                });
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // 響應式設計
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // 初始化
+        init();
+    </script>
+</body>
+</html>
