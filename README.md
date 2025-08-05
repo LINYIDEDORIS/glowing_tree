@@ -1,8 +1,9 @@
+Demo link [https://linyidedoris.github.io/glowing_tree/index.html]
+
 ## 介紹
 這是一顆會發光的小樹，可以隨著係數的調整長程不同的樣態。
 起源為協助我的碩班指導教授 廖冠智老師的研究計劃執行。
 *專案仍在製作中！*
-(link)[https://linyidedoris.github.io/glowing_tree/index.html]
 
 ## 接下來
 希望可以加入不同影響小樹的因子，包含文字、音樂、外部裝置等，逐漸達成虛實互動的效果。
